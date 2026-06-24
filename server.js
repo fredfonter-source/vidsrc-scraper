@@ -218,6 +218,15 @@ app.get("/extract", async (req, res) => {
       )
     );
 
+    // 2. Scan the array IMMEDIATELY to capture the working .m3u8 stream link
+    let foundUrl = null;
+    for (const [domain, data] of resultsArr) {
+      if (data && data.hls_url) {
+        foundUrl = data.hls_url;
+        break; // Stop execution immediately when a link is found
+      }
+    }
+
     const results = Object.fromEntries(resultsArr);
     const success = Object.values(results).some((r) => r.hls_url);
 
@@ -228,20 +237,18 @@ app.get("/extract", async (req, res) => {
       response,
     });
 
-    // 2. Loop through the scraped providers and find the first working .m3u8 link
-    const domains = Object.keys(results);
-    for (const domain of domains) {
-      if (results[domain] && results[domain].hls_url) {
-        // Redirect your Flutter app player straight to the playable stream link!
-        return res.redirect(results[domain].hls_url);
-      }
+    // 3. Trigger immediate HTTP redirection to the stream file if it exists
+    if (foundUrl) {
+      console.log(`🎯 Redirecting directly to stream link: ${foundUrl}`);
+      return res.redirect(foundUrl);
     }
 
     // Fallback if no provider successfully found a stream
     return res.status(404).send("No streaming link found for this title.");
 
   } catch (err) {
-    res.status(500).send("Unexpected server error while scraping.");
+    console.error("Scraper route execution error: ", err);
+    return res.status(500).send("Unexpected server error while scraping.");
   }
 });
 
