@@ -161,6 +161,7 @@ async function scrapeProvider(domain, url) {
 }
 
 //Extract endpoint for m3u8 scraper
+//Extract endpoint for m3u8 scraper
 app.get("/extract", async (req, res) => {
   const type = req.query.type || "movie";
   const tmdb_id = req.query.tmdb_id;
@@ -168,26 +169,27 @@ app.get("/extract", async (req, res) => {
   const episode = req.query.episode ? parseInt(req.query.episode) : undefined;
 
   if (!tmdb_id) {
-    return res.status(400).json({
-      success: false,
-      error: "tmdb_id query param is required",
-      results: {},
-    });
+    return res.status(400).send("tmdb_id query param is required");
   }
 
   if (type === "tv" && (season == null || episode == null)) {
-    return res.status(400).json({
-      success: false,
-      error: "season and episode query params are required for TV shows",
-      results: {},
-    });
+    return res.status(400).send("season and episode query params are required for TV shows");
   }
 
   const cacheKey = JSON.stringify(req.query);
   const cached = cache.get(cacheKey);
+  
+  // 1. Check if the link is in the cache and redirect immediately
   if (cached && Date.now() - cached.timestamp < 1000 * 60 * 15) {
     console.log("Serving from cache");
-    return res.json(cached.response);
+    const results = cached.response.results;
+    const domains = Object.keys(results);
+    for (const domain of domains) {
+      if (results[domain] && results[domain].hls_url) {
+        return res.redirect(results[domain].hls_url);
+      }
+    }
+    return res.status(404).send("Cached stream link not found");
   }
 
   const urls = PROVIDERS.reduce((acc, domain) => {
@@ -226,15 +228,23 @@ app.get("/extract", async (req, res) => {
       response,
     });
 
-    res.json(response);
+    // 2. Loop through the scraped providers and find the first working .m3u8 link
+    const domains = Object.keys(results);
+    for (const domain of domains) {
+      if (results[domain] && results[domain].hls_url) {
+        // Redirect your Flutter app player straight to the playable stream link!
+        return res.redirect(results[domain].hls_url);
+      }
+    }
+
+    // Fallback if no provider successfully found a stream
+    return res.status(404).send("No streaming link found for this title.");
+
   } catch (err) {
-    res.status(500).json({
-      success: false,
-      error: "Unexpected server error",
-      results: {},
-    });
+    res.status(500).send("Unexpected server error while scraping.");
   }
 });
+
 
 /**
  * 🎯 TMDB -> IMDb (for movies only)
